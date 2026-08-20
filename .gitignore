@@ -1,0 +1,39 @@
+# ==========================================
+# 1. THƯ MỤC DỮ LIỆU DỰ ÁN (Quan trọng nhất)
+# ==========================================
+# Không đẩy các file PDF thô, file đã duyệt và kết quả lên GitHub
+# để tránh làm phình to dung lượng repo và bảo mật tài liệu
+1_TaiLieu_Tho/
+2_Da_Duyet/
+3_KetQua_MD/
+
+# ==========================================
+# 2. MÔI TRƯỜNG ẢO PYTHON (Virtual Environments)
+# ==========================================
+.venv/
+venv/
+env/
+ENV/
+
+# ==========================================
+# 3. FILE RÁC & CACHE CỦA PYTHON
+# ==========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ==========================================
+# 4. CẤU HÌNH CỦA TRÌNH BIÊN DỊCH / IDE
+# ==========================================
+# Ẩn các file cấu hình cá nhân nếu bạn dùng IntelliJ, VSCode, v.v.
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# ==========================================
+# 5. FILE RÁC CỦA HỆ ĐIỀU HÀNH
+# ==========================================
+.DS_Store
+Thumbs.db
