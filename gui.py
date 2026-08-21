@@ -2,7 +2,7 @@ import threading
 import customtkinter as ctk
 from tkinter import filedialog
 from core.auto_convert import watch_and_auto_convert
-from core.search import tim_kiem_pdf, tai_pdf
+from core.search import SEARCH_SOURCES, tim_kiem_pdf, tai_pdf
 
 # --- Thiết lập giao diện mặc định ---
 ctk.set_appearance_mode("Dark")
@@ -21,6 +21,7 @@ class PipelineApp(ctk.CTk):
         # Trạng thái watcher (đang chạy hay không)
         self._watcher_running = False
         self._watcher_thread = None
+        self._search_results = []
 
         # Hệ thống lưới: 1 hàng, 2 cột
         self.grid_rowconfigure(0, weight=1)
@@ -158,7 +159,7 @@ class PipelineApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     def _build_search_panel(self):
         self.panel_search = ctk.CTkFrame(self, corner_radius=10)
-        self.panel_search.grid_rowconfigure(4, weight=1)
+        self.panel_search.grid_rowconfigure(5, weight=1)
         self.panel_search.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(
@@ -167,7 +168,7 @@ class PipelineApp(ctk.CTk):
         ).grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 2), sticky="w")
 
         ctk.CTkLabel(
-            self.panel_search, text="Tìm kiếm và tải PDF tự động từ DuckDuckGo",
+            self.panel_search, text="Tìm tài liệu từ web và các nguồn nghiên cứu mở",
             text_color="gray60", font=ctk.CTkFont(size=12)
         ).grid(row=1, column=0, columnspan=3, padx=20, pady=(0, 15), sticky="w")
 
@@ -178,25 +179,61 @@ class PipelineApp(ctk.CTk):
             self.panel_search, placeholder_text="VD: machine learning, Python tutorial...")
         self.entry_keyword.grid(row=2, column=1, padx=(0, 10), pady=6, sticky="ew")
 
-        # Loại tài liệu
-        ctk.CTkLabel(self.panel_search, text="Loại tài liệu:").grid(
+        # Nguồn tìm kiếm
+        ctk.CTkLabel(self.panel_search, text="Nguồn tìm kiếm:").grid(
             row=3, column=0, padx=20, pady=6, sticky="w")
+        self.search_source_by_label = {label: key for key, label in SEARCH_SOURCES.items()}
+        self.combo_search_source = ctk.CTkComboBox(
+            self.panel_search, values=list(self.search_source_by_label)
+        )
+        self.combo_search_source.set(SEARCH_SOURCES['general'])
+        self.combo_search_source.grid(row=3, column=1, columnspan=2, padx=(0, 20), pady=6, sticky="ew")
+
+        # Loại tài liệu (chỉ ảnh hưởng đến nguồn tìm kiếm web DDGS)
+        ctk.CTkLabel(self.panel_search, text="Loại web PDF:").grid(
+            row=4, column=0, padx=20, pady=6, sticky="w")
         self.combo_doc_type = ctk.CTkComboBox(
             self.panel_search,
             values=["1 - Nghiên cứu (Thesis, Report)", "2 - Hướng dẫn (Manual, Guide)", "3 - Tổng quát"]
         )
         self.combo_doc_type.set("3 - Tổng quát")
-        self.combo_doc_type.grid(row=3, column=1, padx=(0, 10), pady=6, sticky="ew")
+        self.combo_doc_type.grid(row=4, column=1, padx=(0, 10), pady=6, sticky="ew")
 
         ctk.CTkButton(
             self.panel_search, text="🔍  Tìm kiếm",
             font=ctk.CTkFont(size=14, weight="bold"), height=38,
             command=self.run_search
-        ).grid(row=3, column=2, padx=(0, 20), pady=6)
+        ).grid(row=4, column=2, padx=(0, 20), pady=6)
 
         # Log tìm kiếm
         self.textbox_search_log = ctk.CTkTextbox(self.panel_search, state="disabled", font=ctk.CTkFont(size=12))
-        self.textbox_search_log.grid(row=4, column=0, columnspan=3, padx=20, pady=(10, 20), sticky="nsew")
+        self.textbox_search_log.grid(row=5, column=0, columnspan=3, padx=20, pady=(10, 10), sticky="nsew")
+
+        # Tải kết quả đã chọn
+        download_frame = ctk.CTkFrame(self.panel_search, fg_color="transparent")
+        download_frame.grid(row=6, column=0, columnspan=3, padx=20, pady=(0, 20), sticky="ew")
+        download_frame.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(download_frame, text="Tải kết quả số:").grid(
+            row=0, column=0, padx=(0, 10), pady=4, sticky="w")
+        self.entry_download_selection = ctk.CTkEntry(
+            download_frame, placeholder_text="VD: 1,3,5")
+        self.entry_download_selection.grid(row=0, column=1, padx=(0, 10), pady=4, sticky="ew")
+        self.btn_download = ctk.CTkButton(
+            download_frame, text="⬇  Tải PDF đã chọn", width=150,
+            state="disabled", command=self.download_selected_results
+        )
+        self.btn_download.grid(row=0, column=2, pady=4)
+
+        ctk.CTkLabel(download_frame, text="Thư mục tải về:").grid(
+            row=1, column=0, padx=(0, 10), pady=4, sticky="w")
+        self.entry_download_folder = ctk.CTkEntry(download_frame)
+        self.entry_download_folder.insert(0, "1_TaiLieu_Tho")
+        self.entry_download_folder.grid(row=1, column=1, padx=(0, 10), pady=4, sticky="ew")
+        ctk.CTkButton(
+            download_frame, text="Chọn", width=150,
+            command=lambda: self._browse_folder(self.entry_download_folder)
+        ).grid(row=1, column=2, pady=4)
 
     # ------------------------------------------------------------------ #
     #  BUILDER: PANEL SETTINGS                                             #
@@ -369,14 +406,105 @@ class PipelineApp(ctk.CTk):
 
         # Lấy loại tài liệu từ combo (ký tự đầu là '1', '2', hoặc '3')
         loai_tl = self.combo_doc_type.get()[0]
+        source_label = self.combo_search_source.get()
+        source = self.search_source_by_label[source_label]
 
-        self.log(f"🔍 Đang tìm kiếm: '{keyword}'...", self.textbox_search_log)
+        self._search_results = []
+        self.btn_download.configure(state="disabled")
+        self.log(f"🔍 Đang tìm kiếm: '{keyword}' ({source_label})...\n", self.textbox_search_log)
 
         threading.Thread(
-            target=tim_kiem_pdf,
-            args=(keyword, loai_tl, 10, lambda msg: self.log(msg, self.textbox_search_log)),
+            target=self._search_worker,
+            args=(keyword, loai_tl, source),
             daemon=True
         ).start()
+
+    def _search_worker(self, keyword, loai_tl, source):
+        """Chạy tìm kiếm trong background thread và hiển thị kết quả."""
+        ket_qua = tim_kiem_pdf(
+            keyword, loai_tl, 10,
+            log_callback=lambda msg: self.log(msg, self.textbox_search_log),
+            source=source,
+        )
+
+        if not ket_qua:
+            return
+
+        self.log("\n📋 Danh sách kết quả:", self.textbox_search_log)
+        for i, res in enumerate(ket_qua):
+            self.log(f"  [{i + 1}] {res['title']}", self.textbox_search_log)
+            self.log(f"       Nguồn: {res.get('source', 'Không rõ nguồn')}", self.textbox_search_log)
+            if res.get('has_pdf'):
+                self.log("       📄 Link PDF trực tiếp", self.textbox_search_log)
+            else:
+                self.log("       🔗 Trang thông tin (chưa xác nhận PDF)", self.textbox_search_log)
+            self.log(f"       🔗 {res['href']}\n", self.textbox_search_log)
+
+        self.after(0, lambda: self._set_search_results(ket_qua))
+
+    def _set_search_results(self, results):
+        """Store the last displayed results so their 1-based numbers can be downloaded."""
+        self._search_results = results
+        self.btn_download.configure(state="normal" if results else "disabled")
+
+    def download_selected_results(self):
+        """Validate the selected numbers, then download them without freezing the GUI."""
+        if not self._search_results:
+            self.log("❌ Hãy tìm kiếm tài liệu trước khi tải.", self.textbox_search_log)
+            return
+
+        selection = self.entry_download_selection.get().strip()
+        if not selection:
+            self.log("❌ Nhập số thứ tự kết quả muốn tải, ví dụ: 1,3,5.", self.textbox_search_log)
+            return
+
+        selected_numbers = []
+        for value in selection.split(','):
+            value = value.strip()
+            if value.isdigit() and int(value) not in selected_numbers:
+                selected_numbers.append(int(value))
+
+        valid_numbers = [
+            number for number in selected_numbers
+            if 1 <= number <= len(self._search_results)
+        ]
+        if not valid_numbers:
+            self.log("❌ Không có số thứ tự hợp lệ trong danh sách kết quả.", self.textbox_search_log)
+            return
+
+        invalid_numbers = sorted(set(selected_numbers) - set(valid_numbers))
+        if invalid_numbers:
+            self.log(
+                f"⚠️ Bỏ qua kết quả không hợp lệ: {', '.join(map(str, invalid_numbers))}.",
+                self.textbox_search_log,
+            )
+
+        output_folder = self.entry_download_folder.get().strip()
+        if not output_folder:
+            self.log("❌ Chọn thư mục tải về trước khi tiếp tục.", self.textbox_search_log)
+            return
+
+        self.btn_download.configure(state="disabled")
+        self.log(f"⬇ Bắt đầu kiểm tra và tải {len(valid_numbers)} kết quả đã chọn...", self.textbox_search_log)
+        threading.Thread(
+            target=self._download_worker,
+            args=(list(self._search_results), valid_numbers, output_folder),
+            daemon=True,
+        ).start()
+
+    def _download_worker(self, results, selected_numbers, output_folder):
+        """Run the safe core downloader in a worker thread."""
+        try:
+            tai_pdf(
+                results,
+                selected_numbers,
+                thu_muc_luu=output_folder,
+                log_callback=lambda msg: self.log(msg, self.textbox_search_log),
+            )
+        finally:
+            self.after(0, lambda: self.btn_download.configure(
+                state="normal" if self._search_results else "disabled"
+            ))
 
     # ------------------------------------------------------------------ #
     #  LOGIC: SETTINGS PANEL                                               #
