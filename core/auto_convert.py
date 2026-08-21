@@ -13,6 +13,13 @@ md_converter = MarkItDown()
 
 # --- 1. CÁC HÀM XỬ LÝ NỘI DUNG (GIỮ NGUYÊN) ---
 
+def _log(message, log_callback=None):
+    """Send conversion progress to the GUI or print it in command-line mode."""
+    if log_callback:
+        log_callback(message)
+    else:
+        print(message)
+
 def table_to_markdown(table_data):
     if not table_data: return ""
     md_table = "\n\n> **📊 [Bảng biểu]:**\n\n"
@@ -78,13 +85,13 @@ def is_file_ready(file_path):
 
 # --- 2. HÀM CÔNG NHÂN (CHUYÊN TRỊ 1 FILE ĐỘC LẬP) ---
 
-def worker_xu_ly_file(file_path, filename, output_folder):
+def worker_xu_ly_file(file_path, filename, output_folder, log_callback=None):
     """Hàm này sẽ được chạy song song ở nhiều luồng khác nhau"""
     base_name = os.path.splitext(filename)[0]
     ext = os.path.splitext(filename)[1].lower()
     output_md_path = os.path.join(output_folder, f"{base_name}.md")
 
-    print(f"⚡ [Bắt đầu] Đang chuyển đổi: {filename} ...")
+    _log(f"⚡ [Bắt đầu] Đang chuyển đổi: {filename} ...", log_callback)
     try:
         if ext == '.pdf':
             content = process_pdf_hybrid(file_path)
@@ -95,19 +102,19 @@ def worker_xu_ly_file(file_path, filename, output_folder):
         with open(output_md_path, 'w', encoding='utf-8') as f:
             f.write(content)
 
-        print(f"   -> ✅ [Xong] Đã xuất Markdown cho: {filename}")
+        _log(f"   -> ✅ [Xong] Đã xuất Markdown cho: {filename}", log_callback)
     except Exception as e:
-        print(f"   -> ❌ [Lỗi] {filename}: {e}")
+        _log(f"   -> ❌ [Lỗi] {filename}: {e}", log_callback)
 
 # --- 3. VÒNG LẶP THEO DÕI & CHIA VIỆC ---
 
-def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=4):
+def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=4, log_callback=None):
     os.makedirs(input_folder, exist_ok=True)
     os.makedirs(output_folder, exist_ok=True)
 
-    print(f"👀 Đang theo dõi thư mục: '{input_folder}'")
-    print(f"🚀 Kích hoạt siêu tốc: Tối đa {max_workers} file cùng lúc")
-    print("👉 Hãy thả file vào thư mục đầu vào...\n")
+    _log(f"👀 Đang theo dõi thư mục: '{input_folder}'", log_callback)
+    _log(f"🚀 Kích hoạt siêu tốc: Tối đa {max_workers} file cùng lúc", log_callback)
+    _log("👉 Hãy thả file vào thư mục đầu vào...\n", log_callback)
 
     da_xu_ly = set()
 
@@ -127,16 +134,22 @@ def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=
                             continue 
                         
                         # Thay vì tự làm, ném việc cho "công nhân" chạy ngầm
-                        executor.submit(worker_xu_ly_file, file_path, filename, output_folder)
+                        executor.submit(
+                            worker_xu_ly_file,
+                            file_path,
+                            filename,
+                            output_folder,
+                            log_callback,
+                        )
                         da_xu_ly.add(filename) # Ghi nhớ ngay để không giao việc trùng lặp
 
                 time.sleep(interval)
 
             except KeyboardInterrupt:
-                print("\n🛑 Đã dừng theo dõi.")
+                _log("\n🛑 Đã dừng theo dõi.", log_callback)
                 break
             except Exception as e:
-                print(f"Lỗi hệ thống: {e}")
+                _log(f"Lỗi hệ thống: {e}", log_callback)
                 time.sleep(interval)
 
 # --- 4. KHỞI ĐỘNG ---
