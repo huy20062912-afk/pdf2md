@@ -379,7 +379,8 @@ class PipelineApp(ctk.CTk):
             watch_and_auto_convert(
                 input_folder=approved,
                 output_folder=output,
-                max_workers=workers
+                max_workers=workers,
+                log_callback=lambda message: self.log(message, self.textbox_log),
             )
         except Exception as e:
             self.log(f"❌ Lỗi hệ thống: {e}")
