@@ -1,9 +1,11 @@
 import threading
+from pathlib import Path
 import customtkinter as ctk
 from tkinter import filedialog
 from core.auto_convert import watch_and_auto_convert
 from core.search import SEARCH_SOURCES, tim_kiem_pdf, tai_pdf
 from core.ai_summary import summarize_paper
+from core.master_summary import create_master_summary
 
 # --- Thiết lập giao diện mặc định ---
 ctk.set_appearance_mode("Dark")
@@ -32,7 +34,7 @@ class PipelineApp(ctk.CTk):
         self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_propagate(False)
-        self.sidebar_frame.grid_rowconfigure(4, weight=1)  # Đẩy nội dung lên trên
+        self.sidebar_frame.grid_rowconfigure(5, weight=1)  # Đẩy nội dung lên trên
 
         self.logo_label = ctk.CTkLabel(
             self.sidebar_frame, text="PDF2MD",
@@ -58,11 +60,17 @@ class PipelineApp(ctk.CTk):
         )
         self.btn_nav_search.grid(row=2, column=0, padx=15, pady=5, sticky="ew")
 
+        self.btn_nav_summarize = ctk.CTkButton(
+            self.sidebar_frame, text="📊  Summarize", **nav_style,
+            command=self.show_summarize_panel
+        )
+        self.btn_nav_summarize.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
+
         self.btn_nav_settings = ctk.CTkButton(
             self.sidebar_frame, text="⚙️  Settings", **nav_style,
             command=self.show_settings_panel
         )
-        self.btn_nav_settings.grid(row=3, column=0, padx=15, pady=5, sticky="ew")
+        self.btn_nav_settings.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
 
         # Nút chuyển Dark/Light ở cuối sidebar
         self.theme_switch = ctk.CTkSwitch(
@@ -70,11 +78,12 @@ class PipelineApp(ctk.CTk):
             command=self.toggle_theme,
             font=ctk.CTkFont(size=14)
         )
-        self.theme_switch.grid(row=5, column=0, padx=20, pady=20, sticky="sw")
+        self.theme_switch.grid(row=6, column=0, padx=20, pady=20, sticky="sw")
 
         # ==================== PHẢI: CÁC PANEL ====================
         self._build_convert_panel()
         self._build_search_panel()
+        self._build_summarize_panel()
         self._build_settings_panel()
 
         # Hiển thị panel Convert mặc định
@@ -319,14 +328,86 @@ class PipelineApp(ctk.CTk):
         ).grid(row=6, column=0, columnspan=3, padx=20, pady=25, sticky="ew")
 
     # ------------------------------------------------------------------ #
+    #  BUILDER: PANEL SUMMARIZE                                            #
+    # ------------------------------------------------------------------ #
+    def _build_summarize_panel(self):
+        self.panel_summarize = ctk.CTkFrame(self, corner_radius=10)
+        self.panel_summarize.grid_columnconfigure(1, weight=1)
+        self.panel_summarize.grid_rowconfigure(5, weight=1)
+
+        ctk.CTkLabel(
+            self.panel_summarize, text="Master Summary",
+            font=ctk.CTkFont(size=26, weight="bold")
+        ).grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 2), sticky="w")
+
+        ctk.CTkLabel(
+            self.panel_summarize,
+            text="Tóm tắt hàng loạt file .md bằng AI và tổng hợp thành báo cáo duy nhất",
+            text_color="gray60", font=ctk.CTkFont(size=14)
+        ).grid(row=1, column=0, columnspan=3, padx=20, pady=(0, 15), sticky="w")
+
+        # --- Thư mục nguồn (chứa file .md) ---
+        ctk.CTkLabel(self.panel_summarize, text="Thư mục .md:").grid(
+            row=2, column=0, padx=20, pady=6, sticky="w")
+        self.entry_sum_input = ctk.CTkEntry(
+            self.panel_summarize,
+            placeholder_text="Thư mục chứa các file .md cần tóm tắt (VD: 3_KetQua_MD)")
+        self.entry_sum_input.grid(row=2, column=1, padx=(0, 10), pady=6, sticky="ew")
+        ctk.CTkButton(
+            self.panel_summarize, text="Chọn", width=80,
+            command=lambda: self._browse_folder(self.entry_sum_input)
+        ).grid(row=2, column=2, padx=(0, 20), pady=6)
+
+        # --- Thư mục xuất (output folder) ---
+        ctk.CTkLabel(self.panel_summarize, text="Thư mục xuất:").grid(
+            row=3, column=0, padx=20, pady=6, sticky="w")
+        self.entry_sum_output = ctk.CTkEntry(
+            self.panel_summarize,
+            placeholder_text="Thư mục lưu báo cáo (VD: 4_Summarized_files)")
+        self.entry_sum_output.insert(0, "4_Summarized_files")
+        self.entry_sum_output.grid(row=3, column=1, padx=(0, 10), pady=6, sticky="ew")
+        ctk.CTkButton(
+            self.panel_summarize, text="Chọn", width=80,
+            command=lambda: self._browse_folder(self.entry_sum_output)
+        ).grid(row=3, column=2, padx=(0, 20), pady=6)
+
+        # --- Nút chạy ---
+        self.btn_summarize = ctk.CTkButton(
+            self.panel_summarize, text="🧠  Tạo Master Summary",
+            fg_color="#8e44ad", hover_color="#6c3483",
+            font=ctk.CTkFont(size=16, weight="bold"), height=42,
+            command=self.run_master_summary
+        )
+        self.btn_summarize.grid(
+            row=4, column=0, columnspan=3, padx=20, pady=10, sticky="ew")
+
+        # --- Live Log ---
+        ctk.CTkLabel(
+            self.panel_summarize, text="Live Log",
+            font=ctk.CTkFont(size=15, weight="bold")
+        ).grid(row=5, column=0, padx=20, pady=(5, 0), sticky="w")
+
+        self.textbox_sum_log = ctk.CTkTextbox(
+            self.panel_summarize, state="disabled", font=ctk.CTkFont(size=14))
+        self.textbox_sum_log.grid(
+            row=6, column=0, columnspan=3, padx=20, pady=(4, 20), sticky="nsew")
+        self.panel_summarize.grid_rowconfigure(6, weight=1)
+
+    # ------------------------------------------------------------------ #
     #  ĐIỀU HƯỚNG SIDEBAR                                                  #
     # ------------------------------------------------------------------ #
     def _hide_all_panels(self):
-        for panel in [self.panel_convert, self.panel_search, self.panel_settings]:
+        for panel in [
+            self.panel_convert, self.panel_search,
+            self.panel_summarize, self.panel_settings
+        ]:
             panel.grid_forget()
 
     def _highlight_nav(self, active_btn):
-        for btn in [self.btn_nav_convert, self.btn_nav_search, self.btn_nav_settings]:
+        for btn in [
+            self.btn_nav_convert, self.btn_nav_search,
+            self.btn_nav_summarize, self.btn_nav_settings
+        ]:
             btn.configure(fg_color="transparent")
         active_btn.configure(fg_color=("gray75", "gray25"))
 
@@ -339,6 +420,11 @@ class PipelineApp(ctk.CTk):
         self._hide_all_panels()
         self.panel_search.grid(row=0, column=1, padx=15, pady=15, sticky="nsew")
         self._highlight_nav(self.btn_nav_search)
+
+    def show_summarize_panel(self):
+        self._hide_all_panels()
+        self.panel_summarize.grid(row=0, column=1, padx=15, pady=15, sticky="nsew")
+        self._highlight_nav(self.btn_nav_summarize)
 
     def show_settings_panel(self):
         self._hide_all_panels()
@@ -533,6 +619,49 @@ class PipelineApp(ctk.CTk):
             self.after(0, lambda: self.btn_download.configure(
                 state="normal" if self._search_results else "disabled"
             ))
+
+    # ------------------------------------------------------------------ #
+    #  LOGIC: SUMMARIZE PANEL                                              #
+    # ------------------------------------------------------------------ #
+    def run_master_summary(self):
+        input_dir = self.entry_sum_input.get().strip()
+        output_dir = self.entry_sum_output.get().strip()
+
+        if not input_dir:
+            self.log("❌ Vui lòng chọn thư mục chứa file .md.", self.textbox_sum_log)
+            return
+        if not output_dir:
+            self.log("❌ Vui lòng chọn thư mục xuất.", self.textbox_sum_log)
+            return
+
+        # Build output file path: <output_dir>/master_summary.md
+        output_filepath = str(Path(output_dir) / "master_summary.md")
+
+        self.btn_summarize.configure(state="disabled")
+        self.log(
+            f"📊 Bắt đầu tóm tắt các file .md từ: {input_dir}\n"
+            f"   → Kết quả sẽ lưu tại: {output_filepath}\n",
+            self.textbox_sum_log
+        )
+
+        threading.Thread(
+            target=self._summarize_worker,
+            args=(input_dir, output_filepath),
+            daemon=True
+        ).start()
+
+    def _summarize_worker(self, input_dir, output_filepath):
+        """Run create_master_summary in a background thread."""
+        try:
+            create_master_summary(
+                input_dir=input_dir,
+                output_filepath=output_filepath,
+                log_callback=lambda msg: self.log(msg, self.textbox_sum_log),
+            )
+        except Exception as e:
+            self.log(f"❌ Lỗi hệ thống: {e}", self.textbox_sum_log)
+        finally:
+            self.after(0, lambda: self.btn_summarize.configure(state="normal"))
 
     # ------------------------------------------------------------------ #
     #  LOGIC: SETTINGS PANEL                                               #

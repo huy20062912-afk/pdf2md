@@ -10,7 +10,7 @@ if not api_key:
     print("Cảnh báo: Không tìm thấy GEMINI_API_KEY trong file .env")
 
 client = genai.Client(api_key=api_key)
-MODEL_NAME = "gemini-3.6-flash"
+MODEL_NAME = "gemini-3.5-flash-lite"
 
 
 def summarize_paper(title: str, abstract_text: str, log_callback):
