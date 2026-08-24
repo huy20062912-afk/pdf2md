@@ -1,11 +1,19 @@
 # ==========================================
 # 1. THƯ MỤC DỮ LIỆU DỰ ÁN (Quan trọng nhất)
 # ==========================================
-# Không đẩy các file PDF thô, file đã duyệt và kết quả lên GitHub
-# để tránh làm phình to dung lượng repo và bảo mật tài liệu
-1_TaiLieu_Tho/
-2_Da_Duyet/
-3_KetQua_MD/
+# Chỉ bỏ qua NỘI DUNG (PDF, MD) bên trong các thư mục,
+# nhưng vẫn giữ thư mục trên GitHub (nhờ file .gitkeep)
+1_TaiLieu_Tho/*
+!1_TaiLieu_Tho/.gitkeep
+
+2_Da_Duyet/*
+!2_Da_Duyet/.gitkeep
+
+3_KetQua_MD/*
+!3_KetQua_MD/.gitkeep
+
+4_TongHop_MD/*
+!4_TongHop_MD/.gitkeep
 
 # ==========================================
 # 2. MÔI TRƯỜNG ẢO PYTHON (Virtual Environments)
