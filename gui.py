@@ -3,6 +3,7 @@ import customtkinter as ctk
 from tkinter import filedialog
 from core.auto_convert import watch_and_auto_convert
 from core.search import SEARCH_SOURCES, tim_kiem_pdf, tai_pdf
+from core.ai_summary import summarize_paper
 
 # --- Thiết lập giao diện mặc định ---
 ctk.set_appearance_mode("Dark")
@@ -35,7 +36,7 @@ class PipelineApp(ctk.CTk):
 
         self.logo_label = ctk.CTkLabel(
             self.sidebar_frame, text="PDF2MD",
-            font=ctk.CTkFont(size=22, weight="bold")
+            font=ctk.CTkFont(size=26, weight="bold")
         )
         self.logo_label.grid(row=0, column=0, padx=20, pady=(25, 30))
 
@@ -67,7 +68,7 @@ class PipelineApp(ctk.CTk):
         self.theme_switch = ctk.CTkSwitch(
             self.sidebar_frame, text="Light Mode",
             command=self.toggle_theme,
-            font=ctk.CTkFont(size=12)
+            font=ctk.CTkFont(size=14)
         )
         self.theme_switch.grid(row=5, column=0, padx=20, pady=20, sticky="sw")
 
@@ -78,6 +79,7 @@ class PipelineApp(ctk.CTk):
 
         # Hiển thị panel Convert mặc định
         self.show_convert_panel()
+
 
     # ------------------------------------------------------------------ #
     #  BUILDER: PANEL CONVERT                                              #
@@ -90,13 +92,13 @@ class PipelineApp(ctk.CTk):
         # Tiêu đề
         ctk.CTkLabel(
             self.panel_convert, text="Document Converter",
-            font=ctk.CTkFont(size=22, weight="bold")
+            font=ctk.CTkFont(size=26, weight="bold")
         ).grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 2), sticky="w")
 
         ctk.CTkLabel(
             self.panel_convert,
             text="Theo dõi thư mục và tự động chuyển đổi PDF sang Markdown",
-            text_color="gray60", font=ctk.CTkFont(size=12)
+            text_color="gray60", font=ctk.CTkFont(size=14)
         ).grid(row=1, column=0, columnspan=3, padx=20, pady=(0, 15), sticky="w")
 
         # --- Thư mục nguồn (Input) ---
@@ -130,7 +132,7 @@ class PipelineApp(ctk.CTk):
         self.btn_start = ctk.CTkButton(
             btn_row, text="▶  Bắt đầu theo dõi",
             fg_color="#2ecc71", hover_color="#27ae60",
-            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            font=ctk.CTkFont(size=16, weight="bold"), height=42,
             command=self.start_watcher
         )
         self.btn_start.grid(row=0, column=0, padx=(0, 8), sticky="ew")
@@ -138,7 +140,7 @@ class PipelineApp(ctk.CTk):
         self.btn_stop = ctk.CTkButton(
             btn_row, text="⏹  Dừng",
             fg_color="#e74c3c", hover_color="#c0392b",
-            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            font=ctk.CTkFont(size=16, weight="bold"), height=42,
             state="disabled",
             command=self.stop_watcher
         )
@@ -147,10 +149,10 @@ class PipelineApp(ctk.CTk):
         # --- Live Log ---
         ctk.CTkLabel(
             self.panel_convert, text="Live Log",
-            font=ctk.CTkFont(size=13, weight="bold")
+            font=ctk.CTkFont(size=15, weight="bold")
         ).grid(row=5, column=0, padx=20, pady=(5, 0), sticky="w")
 
-        self.textbox_log = ctk.CTkTextbox(self.panel_convert, state="disabled", font=ctk.CTkFont(size=12))
+        self.textbox_log = ctk.CTkTextbox(self.panel_convert, state="disabled", font=ctk.CTkFont(size=14))
         self.textbox_log.grid(row=6, column=0, columnspan=3, padx=20, pady=(4, 20), sticky="nsew")
         self.panel_convert.grid_rowconfigure(6, weight=1)
 
@@ -164,12 +166,12 @@ class PipelineApp(ctk.CTk):
 
         ctk.CTkLabel(
             self.panel_search, text="PDF Search & Download",
-            font=ctk.CTkFont(size=22, weight="bold")
+            font=ctk.CTkFont(size=26, weight="bold")
         ).grid(row=0, column=0, columnspan=3, padx=20, pady=(20, 2), sticky="w")
 
         ctk.CTkLabel(
             self.panel_search, text="Tìm tài liệu từ web và các nguồn nghiên cứu mở",
-            text_color="gray60", font=ctk.CTkFont(size=12)
+            text_color="gray60", font=ctk.CTkFont(size=14)
         ).grid(row=1, column=0, columnspan=3, padx=20, pady=(0, 15), sticky="w")
 
         # Từ khóa
@@ -201,17 +203,33 @@ class PipelineApp(ctk.CTk):
 
         ctk.CTkButton(
             self.panel_search, text="🔍  Tìm kiếm",
-            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            font=ctk.CTkFont(size=16, weight="bold"), height=42,
             command=self.run_search
         ).grid(row=4, column=2, padx=(0, 20), pady=6)
 
+        # Số kết quả tìm kiếm
+        ctk.CTkLabel(self.panel_search, text="Số kết quả:").grid(
+            row=5, column=0, padx=20, pady=6, sticky="w")
+        self.slider_result_count = ctk.CTkSlider(
+            self.panel_search, from_=1, to=10, number_of_steps=9,
+            command=self._update_result_count_label
+        )
+        self.slider_result_count.set(5)
+        self.slider_result_count.grid(row=5, column=1, padx=(0, 10), pady=6, sticky="ew")
+        self.lbl_result_count = ctk.CTkLabel(
+            self.panel_search, text="5",
+            font=ctk.CTkFont(size=14, weight="bold"), width=30
+        )
+        self.lbl_result_count.grid(row=5, column=2, padx=(0, 20), pady=6, sticky="w")
+
         # Log tìm kiếm
-        self.textbox_search_log = ctk.CTkTextbox(self.panel_search, state="disabled", font=ctk.CTkFont(size=12))
-        self.textbox_search_log.grid(row=5, column=0, columnspan=3, padx=20, pady=(10, 10), sticky="nsew")
+        self.textbox_search_log = ctk.CTkTextbox(self.panel_search, state="disabled", font=ctk.CTkFont(size=14))
+        self.textbox_search_log.grid(row=6, column=0, columnspan=3, padx=20, pady=(10, 10), sticky="nsew")
+        self.panel_search.grid_rowconfigure(6, weight=1)
 
         # Tải kết quả đã chọn
         download_frame = ctk.CTkFrame(self.panel_search, fg_color="transparent")
-        download_frame.grid(row=6, column=0, columnspan=3, padx=20, pady=(0, 20), sticky="ew")
+        download_frame.grid(row=7, column=0, columnspan=3, padx=20, pady=(0, 20), sticky="ew")
         download_frame.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(download_frame, text="Tải kết quả số:").grid(
@@ -244,7 +262,7 @@ class PipelineApp(ctk.CTk):
 
         ctk.CTkLabel(
             self.panel_settings, text="Settings",
-            font=ctk.CTkFont(size=22, weight="bold")
+            font=ctk.CTkFont(size=26, weight="bold")
         ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 15), sticky="w")
 
         # Max Workers
@@ -271,7 +289,7 @@ class PipelineApp(ctk.CTk):
         # Thư mục mặc định
         ctk.CTkLabel(
             self.panel_settings, text="Thư mục mặc định",
-            font=ctk.CTkFont(size=14, weight="bold")
+            font=ctk.CTkFont(size=16, weight="bold")
         ).grid(row=3, column=0, columnspan=2, padx=20, pady=(20, 5), sticky="w")
 
         ctk.CTkLabel(self.panel_settings, text="Thư mục nguồn:").grid(
@@ -296,7 +314,7 @@ class PipelineApp(ctk.CTk):
 
         ctk.CTkButton(
             self.panel_settings, text="💾  Lưu cài đặt",
-            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            font=ctk.CTkFont(size=16, weight="bold"), height=42,
             command=self._apply_settings
         ).grid(row=6, column=0, columnspan=3, padx=20, pady=25, sticky="ew")
 
@@ -409,21 +427,22 @@ class PipelineApp(ctk.CTk):
         loai_tl = self.combo_doc_type.get()[0]
         source_label = self.combo_search_source.get()
         source = self.search_source_by_label[source_label]
+        so_luong = int(self.slider_result_count.get())
 
         self._search_results = []
         self.btn_download.configure(state="disabled")
-        self.log(f"🔍 Đang tìm kiếm: '{keyword}' ({source_label})...\n", self.textbox_search_log)
+        self.log(f"🔍 Đang tìm kiếm: '{keyword}' ({source_label}) — tối đa {so_luong} kết quả...\n", self.textbox_search_log)
 
         threading.Thread(
             target=self._search_worker,
-            args=(keyword, loai_tl, source),
+            args=(keyword, loai_tl, source, so_luong),
             daemon=True
         ).start()
 
-    def _search_worker(self, keyword, loai_tl, source):
+    def _search_worker(self, keyword, loai_tl, source, so_luong=5):
         """Chạy tìm kiếm trong background thread và hiển thị kết quả."""
         ket_qua = tim_kiem_pdf(
-            keyword, loai_tl, 10,
+            keyword, loai_tl, so_luong,
             log_callback=lambda msg: self.log(msg, self.textbox_search_log),
             source=source,
         )
@@ -439,7 +458,15 @@ class PipelineApp(ctk.CTk):
                 self.log("       📄 Link PDF trực tiếp", self.textbox_search_log)
             else:
                 self.log("       🔗 Trang thông tin (chưa xác nhận PDF)", self.textbox_search_log)
-            self.log(f"       🔗 {res['href']}\n", self.textbox_search_log)
+            self.log(f"       🔗 {res['href']}", self.textbox_search_log)
+            # Ask AI to summarise the paper inline (runs in its own daemon thread)
+            summarize_paper(
+                title=res['title'],
+                abstract_text=res.get('description', ''),
+                log_callback=lambda msg: self.log(msg, self.textbox_search_log),
+
+            )
+            self.log("", self.textbox_search_log)  # blank line separator
 
         self.after(0, lambda: self._set_search_results(ket_qua))
 
@@ -510,6 +537,10 @@ class PipelineApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     #  LOGIC: SETTINGS PANEL                                               #
     # ------------------------------------------------------------------ #
+
+    def _update_result_count_label(self, value):
+        self.lbl_result_count.configure(text=str(int(value)))
+
     def _update_worker_label(self, value):
         self.lbl_worker_val.configure(text=str(int(value)))
 
