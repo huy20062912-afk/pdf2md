@@ -1,11 +1,12 @@
 import threading
 from pathlib import Path
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import filedialog, messagebox
 from core.auto_convert import watch_and_auto_convert
 from core.search import SEARCH_SOURCES, tim_kiem_pdf, tai_pdf
 from core.ai_summary import summarize_paper
 from core.master_summary import create_master_summary
+from core.history_manager import load_history, clear_history
 
 # --- Thiết lập giao diện mặc định ---
 ctk.set_appearance_mode("Dark")
@@ -34,7 +35,7 @@ class PipelineApp(ctk.CTk):
         self.sidebar_frame = ctk.CTkFrame(self, width=200, corner_radius=0)
         self.sidebar_frame.grid(row=0, column=0, sticky="nsew")
         self.sidebar_frame.grid_propagate(False)
-        self.sidebar_frame.grid_rowconfigure(5, weight=1)  # Đẩy nội dung lên trên
+        self.sidebar_frame.grid_rowconfigure(6, weight=1)  # Đẩy nội dung lên trên
 
         self.logo_label = ctk.CTkLabel(
             self.sidebar_frame, text="PDF2MD",
@@ -72,19 +73,26 @@ class PipelineApp(ctk.CTk):
         )
         self.btn_nav_settings.grid(row=4, column=0, padx=15, pady=5, sticky="ew")
 
+        self.btn_nav_history = ctk.CTkButton(
+            self.sidebar_frame, text="📜  History", **nav_style,
+            command=self.show_history_panel
+        )
+        self.btn_nav_history.grid(row=5, column=0, padx=15, pady=5, sticky="ew")
+
         # Nút chuyển Dark/Light ở cuối sidebar
         self.theme_switch = ctk.CTkSwitch(
             self.sidebar_frame, text="Light Mode",
             command=self.toggle_theme,
             font=ctk.CTkFont(size=14)
         )
-        self.theme_switch.grid(row=6, column=0, padx=20, pady=20, sticky="sw")
+        self.theme_switch.grid(row=7, column=0, padx=20, pady=20, sticky="sw")
 
         # ==================== PHẢI: CÁC PANEL ====================
         self._build_convert_panel()
         self._build_search_panel()
         self._build_summarize_panel()
         self._build_settings_panel()
+        self._build_history_panel()
 
         # Hiển thị panel Convert mặc định
         self.show_convert_panel()
@@ -399,14 +407,16 @@ class PipelineApp(ctk.CTk):
     def _hide_all_panels(self):
         for panel in [
             self.panel_convert, self.panel_search,
-            self.panel_summarize, self.panel_settings
+            self.panel_summarize, self.panel_settings,
+            self.panel_history,
         ]:
             panel.grid_forget()
 
     def _highlight_nav(self, active_btn):
         for btn in [
             self.btn_nav_convert, self.btn_nav_search,
-            self.btn_nav_summarize, self.btn_nav_settings
+            self.btn_nav_summarize, self.btn_nav_settings,
+            self.btn_nav_history,
         ]:
             btn.configure(fg_color="transparent")
         active_btn.configure(fg_color=("gray75", "gray25"))
@@ -430,6 +440,12 @@ class PipelineApp(ctk.CTk):
         self._hide_all_panels()
         self.panel_settings.grid(row=0, column=1, padx=15, pady=15, sticky="nsew")
         self._highlight_nav(self.btn_nav_settings)
+
+    def show_history_panel(self):
+        self._hide_all_panels()
+        self.panel_history.grid(row=0, column=1, padx=15, pady=15, sticky="nsew")
+        self._highlight_nav(self.btn_nav_history)
+        self._refresh_history()
 
     # ------------------------------------------------------------------ #
     #  HELPER: LOG & BROWSE                                                #
@@ -662,6 +678,87 @@ class PipelineApp(ctk.CTk):
             self.log(f"❌ Lỗi hệ thống: {e}", self.textbox_sum_log)
         finally:
             self.after(0, lambda: self.btn_summarize.configure(state="normal"))
+
+    # ------------------------------------------------------------------ #
+    #  BUILDER: PANEL HISTORY                                              #
+    # ------------------------------------------------------------------ #
+    def _build_history_panel(self):
+        self.panel_history = ctk.CTkFrame(self, corner_radius=10)
+        self.panel_history.grid_rowconfigure(2, weight=1)
+        self.panel_history.grid_columnconfigure(0, weight=1)
+
+        # Tiêu đề
+        ctk.CTkLabel(
+            self.panel_history, text="Download History",
+            font=ctk.CTkFont(size=26, weight="bold")
+        ).grid(row=0, column=0, columnspan=2, padx=20, pady=(20, 2), sticky="w")
+
+        ctk.CTkLabel(
+            self.panel_history,
+            text="Danh sách các file đã tải thành công",
+            text_color="gray60", font=ctk.CTkFont(size=14)
+        ).grid(row=1, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="w")
+
+        # Textbox hiển thị lịch sử
+        self.textbox_history = ctk.CTkTextbox(
+            self.panel_history, state="disabled", font=ctk.CTkFont(size=13)
+        )
+        self.textbox_history.grid(
+            row=2, column=0, columnspan=2, padx=20, pady=(0, 10), sticky="nsew"
+        )
+
+        # Nút hành động
+        btn_row = ctk.CTkFrame(self.panel_history, fg_color="transparent")
+        btn_row.grid(row=3, column=0, columnspan=2, padx=20, pady=(0, 20), sticky="ew")
+        btn_row.grid_columnconfigure(0, weight=1)
+        btn_row.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkButton(
+            btn_row, text="🔄  Làm mới",
+            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            command=self._refresh_history
+        ).grid(row=0, column=0, padx=(0, 8), sticky="ew")
+
+        ctk.CTkButton(
+            btn_row, text="🗑️  Xóa lịch sử",
+            fg_color="#e74c3c", hover_color="#c0392b",
+            font=ctk.CTkFont(size=14, weight="bold"), height=38,
+            command=self._clear_history_action
+        ).grid(row=0, column=1, sticky="ew")
+
+    def _refresh_history(self):
+        """Load records from history.json and render them into the textbox."""
+        records = load_history()
+        self.textbox_history.configure(state="normal")
+        self.textbox_history.delete("1.0", "end")
+
+        if not records:
+            self.textbox_history.insert("end", "Chưa có lịch sử tải nào.\n")
+        else:
+            # Show newest first
+            for i, rec in enumerate(reversed(records), 1):
+                self.textbox_history.insert("end", f"─" * 60 + "\n")
+                self.textbox_history.insert("end", f"[{i}] {rec.get('time', 'N/A')}\n")
+                self.textbox_history.insert("end", f"  📄 File   : {rec.get('file', 'N/A')}\n")
+                self.textbox_history.insert("end", f"  🔗 Link   : {rec.get('link', 'N/A')}\n")
+                self.textbox_history.insert("end", f"  📝 Summary: {rec.get('summary', 'N/A')}\n")
+            self.textbox_history.insert("end", f"─" * 60 + "\n")
+            self.textbox_history.insert(
+                "end", f"\nTổng cộng: {len(records)} file đã tải.\n"
+            )
+
+        self.textbox_history.configure(state="disabled")
+        self.textbox_history.see("1.0")
+
+    def _clear_history_action(self):
+        """Ask for confirmation then wipe history.json."""
+        confirmed = messagebox.askyesno(
+            title="Xác nhận",
+            message="Bạn có chắc muốn xóa toàn bộ lịch sử tải không?"
+        )
+        if confirmed:
+            clear_history()
+            self._refresh_history()
 
     # ------------------------------------------------------------------ #
     #  LOGIC: SETTINGS PANEL                                               #
