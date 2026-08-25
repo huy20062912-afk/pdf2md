@@ -103,7 +103,7 @@ class PipelineApp(ctk.CTk):
     # ------------------------------------------------------------------ #
     def _build_convert_panel(self):
         self.panel_convert = ctk.CTkFrame(self, corner_radius=10)
-        self.panel_convert.grid_rowconfigure(5, weight=1)
+        self.panel_convert.grid_rowconfigure(7, weight=1)
         self.panel_convert.grid_columnconfigure(1, weight=1)
 
         # Tiêu đề
@@ -140,9 +140,26 @@ class PipelineApp(ctk.CTk):
             command=lambda: self._browse_folder(self.entry_output)
         ).grid(row=3, column=2, padx=(0, 20), pady=6)
 
+        # --- Thư mục lưu trữ (Archive) ---
+        self.switch_archive = ctk.CTkSwitch(
+            self.panel_convert, text="Tự động lưu trữ file gốc:",
+            font=ctk.CTkFont(size=14),
+            command=self._toggle_archive_entry,
+        )
+        self.switch_archive.select()  # Bật mặc định
+        self.switch_archive.grid(row=4, column=0, padx=20, pady=6, sticky="w")
+        self.entry_archive = ctk.CTkEntry(
+            self.panel_convert, placeholder_text="Thư mục lưu trữ file gốc (VD: 5_ArchivedFiles)...")
+        self.entry_archive.insert(0, "5_ArchivedFiles")
+        self.entry_archive.grid(row=4, column=1, padx=(0, 10), pady=6, sticky="ew")
+        ctk.CTkButton(
+            self.panel_convert, text="Chọn", width=80,
+            command=lambda: self._browse_folder(self.entry_archive)
+        ).grid(row=4, column=2, padx=(0, 20), pady=6)
+
         # --- Nút Start / Stop ---
         btn_row = ctk.CTkFrame(self.panel_convert, fg_color="transparent")
-        btn_row.grid(row=4, column=0, columnspan=3, padx=20, pady=10, sticky="ew")
+        btn_row.grid(row=5, column=0, columnspan=3, padx=20, pady=10, sticky="ew")
         btn_row.grid_columnconfigure(0, weight=1)
         btn_row.grid_columnconfigure(1, weight=1)
 
@@ -167,11 +184,11 @@ class PipelineApp(ctk.CTk):
         ctk.CTkLabel(
             self.panel_convert, text="Live Log",
             font=ctk.CTkFont(size=15, weight="bold")
-        ).grid(row=5, column=0, padx=20, pady=(5, 0), sticky="w")
+        ).grid(row=6, column=0, padx=20, pady=(5, 0), sticky="w")
 
         self.textbox_log = ctk.CTkTextbox(self.panel_convert, state="disabled", font=ctk.CTkFont(size=14))
-        self.textbox_log.grid(row=6, column=0, columnspan=3, padx=20, pady=(4, 20), sticky="nsew")
-        self.panel_convert.grid_rowconfigure(6, weight=1)
+        self.textbox_log.grid(row=7, column=0, columnspan=3, padx=20, pady=(4, 20), sticky="nsew")
+        self.panel_convert.grid_rowconfigure(7, weight=1)
 
     # ------------------------------------------------------------------ #
     #  BUILDER: PANEL SEARCH                                               #
@@ -473,6 +490,7 @@ class PipelineApp(ctk.CTk):
     def start_watcher(self):
         approved = self.entry_approved.get().strip()
         output = self.entry_output.get().strip()
+        archive = self.entry_archive.get().strip() if self.switch_archive.get() else None
 
         if not approved or not output:
             self.log("❌ Vui lòng chọn đầy đủ thư mục nguồn và thư mục xuất.")
@@ -484,22 +502,27 @@ class PipelineApp(ctk.CTk):
         self.btn_start.configure(state="disabled")
         self.btn_stop.configure(state="normal")
         self.log(f"👀 Đang theo dõi: {approved}")
-        self.log(f"🚀 Max workers: {workers}\n")
+        self.log(f"🚀 Max workers: {workers}")
+        if archive:
+            self.log(f"📦 Lưu trữ file gốc vào: {archive}\n")
+        else:
+            self.log("📦 Lưu trữ file gốc: Tắt\n")
 
         self._watcher_thread = threading.Thread(
             target=self._run_watcher,
-            args=(approved, output, workers),
+            args=(approved, output, workers, archive),
             daemon=True
         )
         self._watcher_thread.start()
 
-    def _run_watcher(self, approved, output, workers):
+    def _run_watcher(self, approved, output, workers, archive=None):
         """Chạy trong background thread để không đóng băng UI."""
         try:
             watch_and_auto_convert(
                 input_folder=approved,
                 output_folder=output,
                 max_workers=workers,
+                archive_folder=archive,
                 log_callback=lambda message: self.log(message, self.textbox_log),
             )
         except Exception as e:
@@ -515,6 +538,11 @@ class PipelineApp(ctk.CTk):
     def _on_watcher_stopped(self):
         self.btn_start.configure(state="normal")
         self.btn_stop.configure(state="disabled")
+
+    def _toggle_archive_entry(self):
+        """Enable / disable the archive entry based on the toggle switch."""
+        state = "normal" if self.switch_archive.get() else "disabled"
+        self.entry_archive.configure(state=state)
 
     # ------------------------------------------------------------------ #
     #  LOGIC: SEARCH PANEL                                                 #

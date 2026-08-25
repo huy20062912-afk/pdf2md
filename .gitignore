@@ -15,6 +15,9 @@
 4_TongHop_MD/*
 !4_TongHop_MD/.gitkeep
 
+5_ArchivedFiles/*
+!5_ArchivedFiles/.gitkeep
+
 # ==========================================
 # 2. MÔI TRƯỜNG ẢO PYTHON (Virtual Environments)
 # ==========================================

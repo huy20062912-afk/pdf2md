@@ -8,6 +8,7 @@ import pdfplumber
 import concurrent.futures
 from PIL import Image
 from markitdown import MarkItDown
+from core.archiver import move_to_archive
 
 md_converter = MarkItDown()
 
@@ -85,7 +86,7 @@ def is_file_ready(file_path):
 
 # --- 2. HÀM CÔNG NHÂN (CHUYÊN TRỊ 1 FILE ĐỘC LẬP) ---
 
-def worker_xu_ly_file(file_path, filename, output_folder, log_callback=None):
+def worker_xu_ly_file(file_path, filename, output_folder, log_callback=None, archive_folder=None):
     """Hàm này sẽ được chạy song song ở nhiều luồng khác nhau"""
     base_name = os.path.splitext(filename)[0]
     ext = os.path.splitext(filename)[1].lower()
@@ -103,17 +104,24 @@ def worker_xu_ly_file(file_path, filename, output_folder, log_callback=None):
             f.write(content)
 
         _log(f"   -> ✅ [Xong] Đã xuất Markdown cho: {filename}", log_callback)
+
+        # Di chuyển file gốc vào thư mục lưu trữ nếu được bật
+        if archive_folder:
+            move_to_archive(file_path, archive_folder, log_callback)
+
     except Exception as e:
         _log(f"   -> ❌ [Lỗi] {filename}: {e}", log_callback)
 
 # --- 3. VÒNG LẶP THEO DÕI & CHIA VIỆC ---
 
-def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=4, log_callback=None):
+def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=4, log_callback=None, archive_folder=None):
     os.makedirs(input_folder, exist_ok=True)
     os.makedirs(output_folder, exist_ok=True)
 
     _log(f"👀 Đang theo dõi thư mục: '{input_folder}'", log_callback)
     _log(f"🚀 Kích hoạt siêu tốc: Tối đa {max_workers} file cùng lúc", log_callback)
+    if archive_folder:
+        _log(f"📦 Lưu trữ file gốc vào: '{archive_folder}'", log_callback)
     _log("👉 Hãy thả file vào thư mục đầu vào...\n", log_callback)
 
     da_xu_ly = set()
@@ -131,7 +139,7 @@ def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=
 
                     if filename not in da_xu_ly:
                         if not is_file_ready(file_path):
-                            continue 
+                            continue
                         
                         # Thay vì tự làm, ném việc cho "công nhân" chạy ngầm
                         executor.submit(
@@ -140,6 +148,7 @@ def watch_and_auto_convert(input_folder, output_folder, interval=2, max_workers=
                             filename,
                             output_folder,
                             log_callback,
+                            archive_folder,
                         )
                         da_xu_ly.add(filename) # Ghi nhớ ngay để không giao việc trùng lặp
 
