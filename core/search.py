@@ -2,6 +2,7 @@ import os
 import xml.etree.ElementTree as ET
 import requests
 from ddgs import DDGS
+from core.history_manager import save_download
 
 # --- Hằng số bộ lọc ---
 BLACKLIST_DOMAINS = ['academia.edu', 'researchgate.net', 'scribd.com', 'issuu.com']
@@ -435,6 +436,12 @@ def tai_pdf(ket_qua, danh_sach_chon, thu_muc_luu="1_TaiLieu_Tho", log_callback=N
             with open(duong_dan_luu, 'wb') as f:
                 f.write(response.content)
 
+            save_download(
+                title=muc_tieu['title'],
+                url=url,
+                filename=ten_file,
+                saved_to=thu_muc_luu,
+            )
             _log(f"  -> ✅ Tải thành công! ({size_kb:.1f} KB) → {duong_dan_luu}", log_callback)
 
         except Exception as e:
