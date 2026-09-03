@@ -280,7 +280,7 @@ class PipelineApp(ctk.CTk):
         ctk.CTkLabel(download_frame, text="Thư mục tải về:").grid(
             row=1, column=0, padx=(0, 10), pady=4, sticky="w")
         self.entry_download_folder = ctk.CTkEntry(download_frame)
-        self.entry_download_folder.insert(0, "1_TaiLieu_Tho")
+        self.entry_download_folder.insert(0, "1_RawPDF")
         self.entry_download_folder.grid(row=1, column=1, padx=(0, 10), pady=4, sticky="ew")
         ctk.CTkButton(
             download_frame, text="Chọn", width=150,

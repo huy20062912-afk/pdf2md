@@ -9,6 +9,7 @@ import concurrent.futures
 from PIL import Image
 from markitdown import MarkItDown
 from core.archiver import move_to_archive
+from core.ai_summary import client as gemini_client, MODEL_NAME
 
 md_converter = MarkItDown()
 
@@ -38,6 +39,39 @@ def table_to_markdown(table_data):
     return md_table + "\n"
 
 
+def is_text_garbled(text):
+    """Native text extraction succeeded technically, but the content is nonsense —
+    common on math-heavy pages where get_text() can't recover formula structure."""
+    if not text:
+        return True
+    if text.count('\ufffd') > 3:          # replacement chars = broken glyph mapping
+        return True
+    words = text.split()
+    if len(words) < 5:
+        return False                       # too short to judge, let length check handle it
+    avg_len = sum(len(w) for w in words) / len(words)
+    return avg_len < 2.2                   # formulas shredded into single-char tokens
+
+def transcribe_page_with_ai(page, dpi=200):
+    """Render the page as an image and let Gemini read it, preserving formulas as LaTeX."""
+    pix = page.get_pixmap(dpi=dpi)
+    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    prompt = (
+        "Transcribe this page into clean Markdown. "
+        "Preserve every mathematical formula as LaTeX: use $...$ for inline math "
+        "and $$...$$ for block/display equations. Keep normal prose as normal prose "
+        "with correct word spacing. Output only the markdown, no commentary."
+    )
+    try:
+        response = gemini_client.models.generate_content(
+            model=MODEL_NAME,
+            contents=[prompt, img],
+        )
+        return response.text.strip()
+    except Exception as e:
+        return f"> ⚠️ AI transcription failed: {e}\n"
+
+
 def process_pdf_hybrid(pdf_path, ocr_lang='vie+eng'):
     doc = pymupdf.open(pdf_path)
     full_markdown = []
@@ -55,7 +89,12 @@ def process_pdf_hybrid(pdf_path, ocr_lang='vie+eng'):
 
             # 2. Quét Chữ gốc
             native_text = page.get_text().strip()
-            if native_text: page_md += native_text + "\n\n"
+
+            # 3. Nếu chữ ít HOẶC bị lỗi (công thức toán bị vỡ) -> nhờ AI đọc lại cả trang
+            if len(native_text) < 100 or is_text_garbled(native_text):
+                page_md += transcribe_page_with_ai(page) + "\n\n"
+            else:
+                page_md += native_text + "\n\n"
 
             # 3. QUÉT OCR (ĐÃ TỐI ƯU HÓA)
             # CHIẾN THUẬT 1: Chỉ chạy OCR nếu trang này có quá ít chữ (dưới 100 ký tự)
