@@ -22,14 +22,21 @@ def _log(message, log_callback=None):
         print(message)
 
 def table_to_markdown(table_data):
-    if not table_data: return ""
-    md_table = "\n\n> **📊 [Bảng biểu]:**\n\n"
+    if not table_data:
+        return ""
+    max_cols = max(len(row) for row in table_data)
+    md_table = "\n\n**📊 [Bảng biểu]:**\n\n"
     for i, row in enumerate(table_data):
-        clean_row = [str(cell).replace('\n', ' ').strip() if cell is not None else " " for cell in row]
+        clean_row = [
+            str(cell).replace('\n', ' ').replace('|', '\\|').strip() if cell is not None else ""
+            for cell in row
+        ]
+        clean_row += [""] * (max_cols - len(clean_row))  # pad ragged rows
         md_table += "| " + " | ".join(clean_row) + " |\n"
         if i == 0:
-            md_table += "|" + "|".join(["---"] * len(row)) + "|\n"
+            md_table += "|" + "|".join(["---"] * max_cols) + "|\n"
     return md_table + "\n"
+
 
 def process_pdf_hybrid(pdf_path, ocr_lang='vie+eng'):
     doc = pymupdf.open(pdf_path)
