@@ -33,7 +33,7 @@ magika==0.6.3
 mammoth==1.12.0
 markdownify==1.2.3
 markitdown==0.1.7
--e git+ssh://git@github.com/microsoft/markitdown.git@fd239d5d2be43d9b68329730206b9312c7d5a388#egg=markitdown_pdf_plugin&subdirectory=packages/markitdown-pdf-plugin
+# markitdown-pdf-plugin: PDF support is bundled via markitdown[pdf] (pdfminer.six + pdfplumber)
 msal==1.37.0
 msal-extensions==1.3.1
 numpy==2.5.1
