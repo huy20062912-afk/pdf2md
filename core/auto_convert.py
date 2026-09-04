@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import io
+import re
 import pymupdf
 import pytesseract
 import pdfplumber
@@ -93,6 +94,57 @@ def transcribe_page_with_ai(page, dpi=200):
     except Exception as e:
         return f"> ⚠️ AI transcription failed: {e}\n"
 
+_GREEK_LATEX = {
+    'α': r'\alpha', 'β': r'\beta', 'γ': r'\gamma', 'δ': r'\delta', 'ε': r'\epsilon',
+    'ζ': r'\zeta', 'η': r'\eta', 'θ': r'\theta', 'ι': r'\iota', 'κ': r'\kappa',
+    'λ': r'\lambda', 'μ': r'\mu', 'ν': r'\nu', 'ξ': r'\xi', 'π': r'\pi',
+    'ρ': r'\rho', 'σ': r'\sigma', 'τ': r'\tau', 'υ': r'\upsilon', 'φ': r'\phi',
+    'χ': r'\chi', 'ψ': r'\psi', 'ω': r'\omega',
+    'Γ': r'\Gamma', 'Δ': r'\Delta', 'Θ': r'\Theta', 'Λ': r'\Lambda', 'Ξ': r'\Xi',
+    'Π': r'\Pi', 'Σ': r'\Sigma', 'Φ': r'\Phi', 'Ψ': r'\Psi', 'Ω': r'\Omega',
+}
+_SYMBOL_LATEX = {
+    '√': r'\sqrt', '∑': r'\sum', '∫': r'\int', '∞': r'\infty', '±': r'\pm',
+    '×': r'\times', '÷': r'\div', '≤': r'\leq', '≥': r'\geq', '≠': r'\neq',
+    '≈': r'\approx', '∂': r'\partial', '∇': r'\nabla', '∈': r'\in',
+    '⊂': r'\subset', '⊆': r'\subseteq', '∪': r'\cup', '∩': r'\cap', '→': r'\to',
+}
+_SUPERSCRIPT_MAP = {'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁺':'+','⁻':'-','ⁿ':'n'}
+_SUBSCRIPT_MAP = {'₀':'0','₁':'1','₂':'2','₃':'3','₄':'4','₅':'5','₆':'6','₇':'7','₈':'8','₉':'9','₊':'+','₋':'-'}
+
+_SUPER_RUN = re.compile('([⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻ⁿ]+)')
+_SUB_RUN = re.compile('([₀₁₂₃₄₅₆₇₈₉₊₋]+)')
+_LATEX_BLOCK = re.compile(r'\$\$.*?\$\$|\$[^$\n]+\$', re.DOTALL)
+
+def _translate_run(run, table):
+    return ''.join(table.get(ch, ch) for ch in run)
+
+def normalize_unicode_math(text):
+    """Convert Unicode math (Greek letters, symbols, super/subscripts) that
+    extracted correctly from the PDF into LaTeX, so Obsidian actually renders
+    it as math instead of plain characters. Existing $...$/$$...$$ is left alone."""
+    protected = []
+    def _stash(m):
+        protected.append(m.group(0))
+        return f"\x00{len(protected)-1}\x00"
+    text = _LATEX_BLOCK.sub(_stash, text)
+
+    text = _SUPER_RUN.sub(lambda m: f"^{{{_translate_run(m.group(1), _SUPERSCRIPT_MAP)}}}", text)
+    text = _SUB_RUN.sub(lambda m: f"_{{{_translate_run(m.group(1), _SUBSCRIPT_MAP)}}}", text)
+
+    for ch, latex in {**_GREEK_LATEX, **_SYMBOL_LATEX}.items():
+        text = text.replace(ch, f' {latex} ')
+
+    def _wrap(m):
+        token = m.group(0)
+        if '\\' in token or '^{' in token or '_{' in token:
+            return f'${token.strip()}$'
+        return token
+    text = re.sub(r'\S+', _wrap, text)
+
+    text = re.sub(r'\x00(\d+)\x00', lambda m: protected[int(m.group(1))], text)
+    return text
+
 
 def process_pdf_hybrid(pdf_path, output_folder, ocr_lang='vie+eng'):
     doc = pymupdf.open(pdf_path)
@@ -113,6 +165,7 @@ def process_pdf_hybrid(pdf_path, output_folder, ocr_lang='vie+eng'):
                     else: page_md += table_to_markdown(table) 
             # 2. Quét Chữ gốc
             native_text = page.get_text().strip()
+            native_text = normalize_unicode_math(native_text)   
 
             # 3. Nếu chữ ít HOẶC bị lỗi (công thức toán bị vỡ) -> nhờ AI đọc lại cả trang
             if len(native_text) < 100 or is_text_garbled(native_text):
