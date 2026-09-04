@@ -322,15 +322,15 @@ def _search_research(tu_khoa, so_luong, log_callback):
     results = []
     for search_provider in (_search_semantic_scholar, _search_arxiv, _search_openaire):
         results.extend(search_provider(tu_khoa, so_luong, log_callback))
-    return _prioritize_direct_pdfs(results, so_luong)
-
+    open_access_only = [r for r in results if r.get('has_pdf')]
+    return _deduplicate(open_access_only, so_luong)
 
 def _search_biomedical(tu_khoa, so_luong, log_callback):
     """Combine biomedical-first and broad scholarly sources."""
     results = _search_europe_pmc(tu_khoa, so_luong, log_callback)
     results.extend(_search_semantic_scholar(tu_khoa, so_luong, log_callback))
-    return _prioritize_direct_pdfs(results, so_luong)
-
+    open_access_only = [r for r in results if r.get('has_pdf')]
+    return _deduplicate(open_access_only, so_luong)
 
 def _search_general(tu_khoa, loai_tl, so_luong, log_callback):
     """Use DDGS first and SearXNG only when it has not filled the result list."""
