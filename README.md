@@ -74,7 +74,7 @@ GOOGLE_API_KEY=your_gemini_api_key_here
 ## 📦 Cấu trúc dự án
 
 ```
-markitdown/
+doc2md/
 ├── gui.py                  # Ứng dụng GUI chính
 ├── core/
 │   ├── auto_convert.py     # Watcher & bộ máy chuyển đổi đa luồng
