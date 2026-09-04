@@ -38,6 +38,28 @@ def table_to_markdown(table_data):
             md_table += "|" + "|".join(["---"] * max_cols) + "|\n"
     return md_table + "\n"
 
+def is_table_garbled(table_data):
+    """pdfplumber sometimes mistakes a chart's gridlines/markers for a table.
+    Real tables have varied cell content; false-positive charts are mostly
+    short repeated glyphs (e.g. tally-mark-looking data points)."""
+    if not table_data:
+        return False
+    all_cells = [str(c).strip() for row in table_data for c in row if c]
+    if not all_cells:
+        return True
+    noisy = sum(1 for c in all_cells if c and len(set(c)) <= 1 and len(c) <= 12)
+    return (noisy / len(all_cells)) > 0.5
+
+def save_page_as_image(page, pdf_path, page_num, output_folder, dpi=200):
+    """Render the page to PNG and return a markdown image reference,
+    for regions that look like charts/figures rather than real tables."""
+    images_dir = os.path.join(output_folder, "images")
+    os.makedirs(images_dir, exist_ok=True)
+    img_name = f"{os.path.splitext(os.path.basename(pdf_path))[0]}_p{page_num}.png"
+    pix = page.get_pixmap(dpi=dpi)
+    pix.save(os.path.join(images_dir, img_name))
+    return f"\n\n![Hình/Biểu đồ trang {page_num}](images/{img_name})\n\n"
+
 
 def is_text_garbled(text):
     """Native text extraction succeeded technically, but the content is nonsense —
@@ -72,7 +94,7 @@ def transcribe_page_with_ai(page, dpi=200):
         return f"> ⚠️ AI transcription failed: {e}\n"
 
 
-def process_pdf_hybrid(pdf_path, ocr_lang='vie+eng'):
+def process_pdf_hybrid(pdf_path, output_folder, ocr_lang='vie+eng'):
     doc = pymupdf.open(pdf_path)
     full_markdown = []
 
@@ -83,10 +105,12 @@ def process_pdf_hybrid(pdf_path, ocr_lang='vie+eng'):
             page_md = f"### Trang {page_num + 1}\n\n"
 
             # 1. Quét Bảng biểu
-            tables = plumber_page.extract_tables()
-            if tables:
-                for table in tables: page_md += table_to_markdown(table)
-
+            tables = plumber_page.extract_tables() 
+            if tables: 
+                for table in tables: 
+                    if is_table_garbled(table): 
+                        page_md += save_page_as_image(page, pdf_path, page_num + 1, output_folder) 
+                    else: page_md += table_to_markdown(table) 
             # 2. Quét Chữ gốc
             native_text = page.get_text().strip()
 
@@ -141,7 +165,7 @@ def worker_xu_ly_file(file_path, filename, output_folder, log_callback=None, arc
     _log(f"⚡ [Bắt đầu] Đang chuyển đổi: {filename} ...", log_callback)
     try:
         if ext == '.pdf':
-            content = process_pdf_hybrid(file_path)
+            content = process_pdf_hybrid(file_path, output_folder)
         else:
             res = md_converter.convert(file_path)
             content = res.text_content.strip()
